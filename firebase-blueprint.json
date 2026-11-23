@@ -1,0 +1,157 @@
+{
+  "entities": {
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Platform super-administrator record authorizing cross-tenant governance.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "format": "email", "maxLength": 254 },
+        "grantedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "grantedAt"]
+    },
+    "UserPrivateProfile": {
+      "title": "UserPrivateProfile",
+      "description": "Isolated PII profile for authenticated users.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "format": "email", "maxLength": 254 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "defaultTenantId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "displayName", "updatedAt"]
+    },
+    "Tenant": {
+      "title": "Tenant",
+      "description": "Isolated multi-tenant organization workspace for a UAE property owner association, hospitality group, or industrial portfolio.",
+      "type": "object",
+      "properties": {
+        "tenantId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "emirate": { "type": "string", "enum": ["Dubai", "Ras Al Khaimah", "Fujairah", "Abu Dhabi", "Sharjah"] },
+        "segment": { "type": "string", "enum": ["Hospitality / Serviced Apartments", "Industrial / Logistics / Ports", "Residential Tower Associations", "Government / Semi-Government"] },
+        "commercialModel": { "type": "string", "enum": ["Option A: BFMA Prime / Arknex Sub", "Option B: Separate Contracts", "Option C: Joint Venture"] },
+        "rolloutPhase": { "type": "string", "enum": ["Q4 2026 Pilot Prep", "Q1 2027 Dubai Launch", "Q2 2027 RAK Launch", "Q3 2027 Fujairah Launch", "Q4 2027+ Scale"] },
+        "activeBmsCount": { "type": "number" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "status": { "type": "string", "enum": ["active", "onboarding", "archived"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["tenantId", "name", "emirate", "segment", "commercialModel", "rolloutPhase", "activeBmsCount", "ownerUid", "status", "createdAt", "updatedAt"]
+    },
+    "TenantMember": {
+      "title": "TenantMember",
+      "description": "RBAC membership mapping a user UID to a specific tenant and operational role.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "tenantId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "role": { "type": "string", "enum": ["super_admin", "bfma_fm_manager", "arknex_auditor", "tenant_viewer"] },
+        "organization": { "type": "string", "enum": ["Arknex", "BFMA", "Client"] },
+        "status": { "type": "string", "enum": ["active", "revoked"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "tenantId", "displayName", "role", "organization", "status", "createdAt", "updatedAt"]
+    },
+    "BuildingAsset": {
+      "title": "BuildingAsset",
+      "description": "Physical building or facility asset tracked through the P1-P5 green compliance stages.",
+      "type": "object",
+      "properties": {
+        "assetId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "tenantId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 140 },
+        "emirate": { "type": "string", "enum": ["Dubai", "Ras Al Khaimah", "Fujairah", "Abu Dhabi", "Sharjah"] },
+        "gfaSqm": { "type": "number" },
+        "stage": { "type": "string", "enum": ["P1", "P2", "P3", "P4", "P5"] },
+        "certificationTarget": { "type": "string", "enum": ["LEED O+M", "Al Sa'fat", "Barjeel", "MOCCAE MRV"] },
+        "bmsConnected": { "type": "boolean" },
+        "baselineEmissionsTco2e": { "type": "number" },
+        "currentEmissionsTco2e": { "type": "number" },
+        "complianceScore": { "type": "number" },
+        "createdByUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["assetId", "tenantId", "name", "emirate", "gfaSqm", "stage", "certificationTarget", "bmsConnected", "baselineEmissionsTco2e", "currentEmissionsTco2e", "complianceScore", "createdByUid", "createdAt", "updatedAt"]
+    },
+    "DmrvRecord": {
+      "title": "DmrvRecord",
+      "description": "Tenant-isolated Digital MRV telemetry record (Utility bill, BMS trend, Fuel log, or Waste record) with lineage verification.",
+      "type": "object",
+      "properties": {
+        "recordId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "tenantId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "assetId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "assetName": { "type": "string", "minLength": 2, "maxLength": 140 },
+        "sourceType": { "type": "string", "enum": ["utility_bill", "bms_trend", "fuel_log", "waste_record"] },
+        "scope": { "type": "string", "enum": ["Scope 1", "Scope 2", "Scope 3 Waste"] },
+        "quantity": { "type": "number" },
+        "unit": { "type": "string", "enum": ["kWh", "Liters", "Tonnes", "RT-hr"] },
+        "emissionsTco2e": { "type": "number" },
+        "validationStatus": { "type": "string", "enum": ["validated", "pending_audit", "flagged"] },
+        "lineageHash": { "type": "string", "minLength": 8, "maxLength": 64, "pattern": "^[a-fA-F0-9]+$" },
+        "period": { "type": "string", "minLength": 7, "maxLength": 10 },
+        "createdByUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["recordId", "tenantId", "assetId", "assetName", "sourceType", "scope", "quantity", "unit", "emissionsTco2e", "validationStatus", "lineageHash", "period", "createdByUid", "createdAt"]
+    },
+    "SprintTask": {
+      "title": "SprintTask",
+      "description": "Agile methodology sprint work item aligned to P1-P5 GTM stages and BFMA/Arknex ownership.",
+      "type": "object",
+      "properties": {
+        "taskId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "tenantId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "sprintName": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "title": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "stage": { "type": "string", "enum": ["P1", "P2", "P3", "P4", "P5"] },
+        "ownerTeam": { "type": "string", "enum": ["BFMA", "Arknex", "Joint"] },
+        "status": { "type": "string", "enum": ["backlog", "in_progress", "audit_review", "done"] },
+        "storyPoints": { "type": "number" },
+        "priority": { "type": "string", "enum": ["high", "medium", "low"] },
+        "createdByUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["taskId", "tenantId", "sprintName", "title", "stage", "ownerTeam", "status", "storyPoints", "priority", "createdByUid", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/admins/{uid}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Platform super-administrator directory."
+    },
+    "/users/{uid}/private/profile": {
+      "schema": { "$ref": "#/entities/UserPrivateProfile" },
+      "description": "Strictly owner-isolated user PII document."
+    },
+    "/tenants/{tenantId}": {
+      "schema": { "$ref": "#/entities/Tenant" },
+      "description": "Root multi-tenant workspace document."
+    },
+    "/tenants/{tenantId}/members/{uid}": {
+      "schema": { "$ref": "#/entities/TenantMember" },
+      "description": "Tenant-scoped RBAC membership subcollection (Master Gate)."
+    },
+    "/tenants/{tenantId}/assets/{assetId}": {
+      "schema": { "$ref": "#/entities/BuildingAsset" },
+      "description": "Tenant-isolated building portfolio assets across P1-P5 stages."
+    },
+    "/tenants/{tenantId}/dmrv_records/{recordId}": {
+      "schema": { "$ref": "#/entities/DmrvRecord" },
+      "description": "Tenant-isolated immutable dMRV telemetry and emissions audit lineage records."
+    },
+    "/tenants/{tenantId}/sprint_tasks/{taskId}": {
+      "schema": { "$ref": "#/entities/SprintTask" },
+      "description": "Tenant-isolated Agile sprint tasks and feature delivery items."
+    }
+  }
+}

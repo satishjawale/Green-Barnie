@@ -1,0 +1,419 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 0: Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(uid) {
+      return isVerified() && request.auth.uid == uid;
+    }
+
+    function isBootstrappedAdminEmail() {
+      return isVerified() && request.auth.token.email == 'satish.jawale@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdminEmail() ||
+        (isVerified() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    function tenantExists(tenantId) {
+      return exists(/databases/$(database)/documents/tenants/$(tenantId));
+    }
+
+    function isTenantMember(tenantId) {
+      return isVerified() &&
+        exists(/databases/$(database)/documents/tenants/$(tenantId)/members/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/tenants/$(tenantId)/members/$(request.auth.uid)).data.status == 'active';
+    }
+
+    function hasTenantRole(tenantId, allowedRoles) {
+      return isTenantMember(tenantId) &&
+        get(/databases/$(database)/documents/tenants/$(tenantId)/members/$(request.auth.uid)).data.role in allowedRoles;
+    }
+
+    // --- Validation Blueprints (Anti-Update-Gap) ---
+    function isValidAdminRecord(data) {
+      return data.keys().hasAll(['uid', 'email', 'grantedAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'grantedAt']) &&
+        isValidId(data.uid) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+        data.grantedAt is timestamp;
+    }
+
+    function isValidUserPrivateProfile(data) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'displayName', 'defaultTenantId', 'updatedAt']) &&
+        isValidId(data.uid) &&
+        data.uid == request.auth.uid &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120 &&
+        (!('defaultTenantId' in data) || isValidId(data.defaultTenantId)) &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidTenant(data, tenantId) {
+      return data.keys().hasAll([
+          'tenantId', 'name', 'emirate', 'segment', 'commercialModel',
+          'rolloutPhase', 'activeBmsCount', 'ownerUid', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'tenantId', 'name', 'emirate', 'segment', 'commercialModel',
+          'rolloutPhase', 'activeBmsCount', 'ownerUid', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.tenantId) && data.tenantId == tenantId &&
+        data.name is string && data.name.size() >= 2 && data.name.size() <= 120 &&
+        data.emirate in ['Dubai', 'Ras Al Khaimah', 'Fujairah', 'Abu Dhabi', 'Sharjah'] &&
+        data.segment in [
+          'Hospitality / Serviced Apartments',
+          'Industrial / Logistics / Ports',
+          'Residential Tower Associations',
+          'Government / Semi-Government'
+        ] &&
+        data.commercialModel in [
+          'Option A: BFMA Prime / Arknex Sub',
+          'Option B: Separate Contracts',
+          'Option C: Joint Venture'
+        ] &&
+        data.rolloutPhase in [
+          'Q4 2026 Pilot Prep',
+          'Q1 2027 Dubai Launch',
+          'Q2 2027 RAK Launch',
+          'Q3 2027 Fujairah Launch',
+          'Q4 2027+ Scale'
+        ] &&
+        data.activeBmsCount is number && data.activeBmsCount >= 0 && data.activeBmsCount <= 10000 &&
+        isValidId(data.ownerUid) &&
+        data.status in ['active', 'onboarding', 'archived'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidTenantMember(data, tenantId, uid) {
+      return data.keys().hasAll([
+          'uid', 'tenantId', 'displayName', 'role', 'organization', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'uid', 'tenantId', 'displayName', 'role', 'organization', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.uid) && data.uid == uid &&
+        isValidId(data.tenantId) && data.tenantId == tenantId &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120 &&
+        data.role in ['super_admin', 'bfma_fm_manager', 'arknex_auditor', 'tenant_viewer'] &&
+        data.organization in ['Arknex', 'BFMA', 'Client'] &&
+        data.status in ['active', 'revoked'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidBuildingAsset(data, tenantId, assetId) {
+      return data.keys().hasAll([
+          'assetId', 'tenantId', 'name', 'emirate', 'gfaSqm', 'stage',
+          'certificationTarget', 'bmsConnected', 'baselineEmissionsTco2e',
+          'currentEmissionsTco2e', 'complianceScore', 'createdByUid', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'assetId', 'tenantId', 'name', 'emirate', 'gfaSqm', 'stage',
+          'certificationTarget', 'bmsConnected', 'baselineEmissionsTco2e',
+          'currentEmissionsTco2e', 'complianceScore', 'createdByUid', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.assetId) && data.assetId == assetId &&
+        isValidId(data.tenantId) && data.tenantId == tenantId &&
+        data.name is string && data.name.size() >= 2 && data.name.size() <= 140 &&
+        data.emirate in ['Dubai', 'Ras Al Khaimah', 'Fujairah', 'Abu Dhabi', 'Sharjah'] &&
+        data.gfaSqm is number && data.gfaSqm > 0 && data.gfaSqm <= 50000000 &&
+        data.stage in ['P1', 'P2', 'P3', 'P4', 'P5'] &&
+        data.certificationTarget in ['LEED O+M', 'Al Sa\'fat', 'Barjeel', 'MOCCAE MRV'] &&
+        data.bmsConnected is bool &&
+        data.baselineEmissionsTco2e is number && data.baselineEmissionsTco2e >= 0 && data.baselineEmissionsTco2e <= 5000000 &&
+        data.currentEmissionsTco2e is number && data.currentEmissionsTco2e >= 0 && data.currentEmissionsTco2e <= 5000000 &&
+        data.complianceScore is number && data.complianceScore >= 0 && data.complianceScore <= 100 &&
+        isValidId(data.createdByUid) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidDmrvRecord(data, tenantId, recordId) {
+      return data.keys().hasAll([
+          'recordId', 'tenantId', 'assetId', 'assetName', 'sourceType', 'scope',
+          'quantity', 'unit', 'emissionsTco2e', 'validationStatus', 'lineageHash',
+          'period', 'createdByUid', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'recordId', 'tenantId', 'assetId', 'assetName', 'sourceType', 'scope',
+          'quantity', 'unit', 'emissionsTco2e', 'validationStatus', 'lineageHash',
+          'period', 'createdByUid', 'createdAt'
+        ]) &&
+        isValidId(data.recordId) && data.recordId == recordId &&
+        isValidId(data.tenantId) && data.tenantId == tenantId &&
+        isValidId(data.assetId) &&
+        data.assetName is string && data.assetName.size() >= 2 && data.assetName.size() <= 140 &&
+        data.sourceType in ['utility_bill', 'bms_trend', 'fuel_log', 'waste_record'] &&
+        data.scope in ['Scope 1', 'Scope 2', 'Scope 3 Waste'] &&
+        data.quantity is number && data.quantity > 0 && data.quantity <= 1000000000 &&
+        data.unit in ['kWh', 'Liters', 'Tonnes', 'RT-hr'] &&
+        data.emissionsTco2e is number && data.emissionsTco2e >= 0 && data.emissionsTco2e <= 5000000 &&
+        data.validationStatus in ['validated', 'pending_audit', 'flagged'] &&
+        data.lineageHash is string && data.lineageHash.size() >= 8 && data.lineageHash.size() <= 64 &&
+        data.lineageHash.matches('^[a-fA-F0-9]+$') &&
+        data.period is string && data.period.size() >= 7 && data.period.size() <= 10 &&
+        isValidId(data.createdByUid) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidSprintTask(data, tenantId, taskId) {
+      return data.keys().hasAll([
+          'taskId', 'tenantId', 'sprintName', 'title', 'stage', 'ownerTeam',
+          'status', 'storyPoints', 'priority', 'createdByUid', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'taskId', 'tenantId', 'sprintName', 'title', 'stage', 'ownerTeam',
+          'status', 'storyPoints', 'priority', 'createdByUid', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.taskId) && data.taskId == taskId &&
+        isValidId(data.tenantId) && data.tenantId == tenantId &&
+        data.sprintName is string && data.sprintName.size() >= 2 && data.sprintName.size() <= 80 &&
+        data.title is string && data.title.size() >= 3 && data.title.size() <= 160 &&
+        data.stage in ['P1', 'P2', 'P3', 'P4', 'P5'] &&
+        data.ownerTeam in ['BFMA', 'Arknex', 'Joint'] &&
+        data.status in ['backlog', 'in_progress', 'audit_review', 'done'] &&
+        data.storyPoints is number && data.storyPoints >= 1 && data.storyPoints <= 21 &&
+        data.priority in ['high', 'medium', 'low'] &&
+        isValidId(data.createdByUid) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+
+    // 1. Platform Admins
+    match /admins/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list: if isBootstrappedAdminEmail();
+      allow create: if isValidId(uid) && isValidAdminRecord(incoming()) &&
+        incoming().grantedAt == request.time &&
+        isAdmin();
+      allow update, delete: if isValidId(uid) && isAdmin();
+    }
+
+    // 2. Isolated User PII Profiles
+    match /users/{uid}/private/profile {
+      allow get: if isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list: if false;
+      allow create: if isValidId(uid) && isOwner(uid) &&
+        isValidUserPrivateProfile(incoming()) &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(uid) && isOwner(uid) &&
+        isValidUserPrivateProfile(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'defaultTenantId', 'email', 'updatedAt']);
+      allow delete: if isValidId(uid) && isAdmin();
+    }
+
+    // 3. Multi-Tenant Root Workspaces
+    match /tenants/{tenantId} {
+      allow get: if isValidId(tenantId) && (isAdmin() || isTenantMember(tenantId));
+      allow list: if isVerified() && (
+        resource.data.ownerUid == request.auth.uid || isBootstrappedAdminEmail()
+      );
+      allow create: if isValidId(tenantId) && isVerified() &&
+        isValidTenant(incoming(), tenantId) &&
+        incoming().ownerUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(tenantId) && isVerified() &&
+        isValidTenant(incoming(), tenantId) &&
+        incoming().tenantId == existing().tenantId &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            existing().status != 'archived' &&
+            hasTenantRole(tenantId, ['super_admin', 'bfma_fm_manager']) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'name', 'rolloutPhase', 'commercialModel', 'activeBmsCount', 'status', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isValidId(tenantId) && isAdmin();
+
+      // 3a. Tenant RBAC Membership Subcollection (Master Gate)
+      match /members/{uid} {
+        allow get: if isValidId(tenantId) && isValidId(uid) &&
+          (isAdmin() || isOwner(uid) || isTenantMember(tenantId));
+        allow list: if isVerified() && (
+          resource.data.uid == request.auth.uid || isBootstrappedAdminEmail()
+        );
+        allow create: if isValidId(tenantId) && isValidId(uid) && isVerified() &&
+          isValidTenantMember(incoming(), tenantId, uid) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          tenantExists(tenantId) &&
+          (
+            isAdmin() ||
+            (
+              uid == request.auth.uid &&
+              get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerUid == request.auth.uid &&
+              incoming().role == 'bfma_fm_manager'
+            ) ||
+            (
+              hasTenantRole(tenantId, ['super_admin']) &&
+              incoming().role != 'super_admin'
+            )
+          );
+        allow update: if isValidId(tenantId) && isValidId(uid) && isVerified() &&
+          isValidTenantMember(incoming(), tenantId, uid) &&
+          incoming().uid == existing().uid &&
+          incoming().tenantId == existing().tenantId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          (
+            isAdmin() ||
+            (
+              hasTenantRole(tenantId, ['super_admin']) &&
+              incoming().role != 'super_admin' &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['role', 'organization', 'status', 'updatedAt'])
+            )
+          );
+        allow delete: if isValidId(tenantId) && isValidId(uid) && isAdmin();
+      }
+
+      // 3b. Tenant-Isolated Building Portfolio Assets (P1-P5)
+      match /assets/{assetId} {
+        allow get: if isValidId(tenantId) && isValidId(assetId) &&
+          (isAdmin() || isTenantMember(tenantId));
+        allow list: if isVerified() && (
+          resource.data.createdByUid == request.auth.uid || isBootstrappedAdminEmail()
+        );
+        allow create: if isValidId(tenantId) && isValidId(assetId) && isVerified() &&
+          isValidBuildingAsset(incoming(), tenantId, assetId) &&
+          incoming().createdByUid == request.auth.uid &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          tenantExists(tenantId) &&
+          (isAdmin() || hasTenantRole(tenantId, ['super_admin', 'bfma_fm_manager', 'arknex_auditor']));
+        allow update: if isValidId(tenantId) && isValidId(assetId) && isVerified() &&
+          isValidBuildingAsset(incoming(), tenantId, assetId) &&
+          incoming().assetId == existing().assetId &&
+          incoming().tenantId == existing().tenantId &&
+          incoming().createdByUid == existing().createdByUid &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          (
+            isAdmin() ||
+            (
+              hasTenantRole(tenantId, ['super_admin', 'bfma_fm_manager']) &&
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'name', 'stage', 'certificationTarget', 'bmsConnected',
+                'currentEmissionsTco2e', 'complianceScore', 'updatedAt'
+              ])
+            ) ||
+            (
+              hasTenantRole(tenantId, ['arknex_auditor']) &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['stage', 'complianceScore', 'updatedAt'])
+            )
+          );
+        allow delete: if isValidId(tenantId) && isValidId(assetId) &&
+          (isAdmin() || hasTenantRole(tenantId, ['super_admin']));
+      }
+
+      // 3c. Tenant-Isolated dMRV Telemetry & Emissions Audit Records
+      match /dmrv_records/{recordId} {
+        allow get: if isValidId(tenantId) && isValidId(recordId) &&
+          (isAdmin() || isTenantMember(tenantId));
+        allow list: if isVerified() && (
+          resource.data.createdByUid == request.auth.uid || isBootstrappedAdminEmail()
+        );
+        allow create: if isValidId(tenantId) && isValidId(recordId) && isVerified() &&
+          isValidDmrvRecord(incoming(), tenantId, recordId) &&
+          incoming().createdByUid == request.auth.uid &&
+          incoming().createdAt == request.time &&
+          tenantExists(tenantId) &&
+          (isAdmin() || hasTenantRole(tenantId, ['super_admin', 'bfma_fm_manager', 'arknex_auditor']));
+        allow update: if isValidId(tenantId) && isValidId(recordId) && isVerified() &&
+          isValidDmrvRecord(incoming(), tenantId, recordId) &&
+          incoming().recordId == existing().recordId &&
+          incoming().tenantId == existing().tenantId &&
+          incoming().assetId == existing().assetId &&
+          incoming().quantity == existing().quantity &&
+          incoming().emissionsTco2e == existing().emissionsTco2e &&
+          incoming().lineageHash == existing().lineageHash &&
+          incoming().createdByUid == existing().createdByUid &&
+          incoming().createdAt == existing().createdAt &&
+          (
+            isAdmin() ||
+            (
+              hasTenantRole(tenantId, ['arknex_auditor', 'super_admin']) &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['validationStatus'])
+            )
+          );
+        allow delete: if isValidId(tenantId) && isValidId(recordId) && isAdmin();
+      }
+
+      // 3d. Tenant-Isolated Agile Sprint Tasks
+      match /sprint_tasks/{taskId} {
+        allow get: if isValidId(tenantId) && isValidId(taskId) &&
+          (isAdmin() || isTenantMember(tenantId));
+        allow list: if isVerified() && (
+          resource.data.createdByUid == request.auth.uid || isBootstrappedAdminEmail()
+        );
+        allow create: if isValidId(tenantId) && isValidId(taskId) && isVerified() &&
+          isValidSprintTask(incoming(), tenantId, taskId) &&
+          incoming().createdByUid == request.auth.uid &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          tenantExists(tenantId) &&
+          (isAdmin() || hasTenantRole(tenantId, ['super_admin', 'bfma_fm_manager', 'arknex_auditor']));
+        allow update: if isValidId(tenantId) && isValidId(taskId) && isVerified() &&
+          isValidSprintTask(incoming(), tenantId, taskId) &&
+          incoming().taskId == existing().taskId &&
+          incoming().tenantId == existing().tenantId &&
+          incoming().createdByUid == existing().createdByUid &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          (
+            isAdmin() ||
+            (
+              hasTenantRole(tenantId, ['super_admin', 'bfma_fm_manager']) &&
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'title', 'sprintName', 'stage', 'ownerTeam', 'status', 'storyPoints', 'priority', 'updatedAt'
+              ])
+            ) ||
+            (
+              hasTenantRole(tenantId, ['arknex_auditor']) &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+            )
+          );
+        allow delete: if isValidId(tenantId) && isValidId(taskId) &&
+          (isAdmin() || hasTenantRole(tenantId, ['super_admin', 'bfma_fm_manager']));
+      }
+    }
+  }
+}

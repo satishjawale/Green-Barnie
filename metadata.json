@@ -1,0 +1,6 @@
+{
+  "name": "Arknex & BFMA Green Building dMRV",
+  "description": "Multi-tenant UAE Green Building GTM, Digital MRV (dMRV) carbon compliance, Agile sprint workflow, RBAC, and third-party BMS synchronization platform for the Arknex & BFMA strategic partnership.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
